@@ -1,0 +1,81 @@
+Coursera Practical Machine Learning Project: write-up
+========================================================
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+# Getting and cleanning data
+
+```{r, cache=TRUE}
+library(corrplot)
+library(caret)
+library(randomForest)
+##Load and clean data
+training <- read.csv("pml-training.csv", header = TRUE, sep = ",", na.strings = c("NA", ""))
+training <- training[, which(as.numeric(colSums(is.na(training)))==0)]
+```
+
+# Feature Selection
+First, remove variables that are highly correlated.
+```{r,cache=TRUE}
+## Remove variables that are highly correlated
+corClass <- cor(x = training[sapply(training, is.numeric)])
+highlyCor <- findCorrelation(corClass, 0.7)
+#Apply correlation filter at 0.70,
+#then we remove all the variable correlated with more 0.7.
+training <- training[,-highlyCor]
+```
+
+Second, select the variable that has constant value.
+```{r, cache=TRUE}
+## remove nearZeroVars
+removeColumns <- nearZeroVar(training)
+training <- training[, -removeColumns]
+## remove some information for users
+training <- training[,c(5:36)]
+```
+
+Third, select the variable that is important using **varImp**. In this step, I build a prediction model using tree.
+```{r, cache=TRUE}
+##Split the data set
+inTrain <- createDataPartition(y=training$classe, p=0.7, list = FALSE)
+trainTR <- training[inTrain,]
+testTR <- training[-inTrain,]
+
+
+##First model using tree
+modelFit1 <- train(classe ~., data = trainTR, method = "rpart")
+```
+
+After building the first model using tree, the variables with importance larger than 0 are selected.
+```{r, cache=TRUE}
+## select the important var
+impVar <- varImp(modelFit1, surrogates = FALSE, competes = TRUE)
+
+##choose the var the has importance larger than 0
+impVar
+training <- training[, c("accel_belt_z", "magnet_belt_y", "total_accel_belt", "magnet_dumbbell_y", "pitch_forearm", "magnet_dumbbell_z", "roll_forearm", "yaw_belt","magnet_arm_x", "roll_dumbbell","magnet_belt_z", "roll_arm","accel_forearm_x","magnet_arm_y","classe")]
+```
+
+# Build the Model Using Random Forest
+## Split data set for random forest
+Use 75% for training set, 25% for testing set.
+```{r, cache=TRUE}
+inTrain <- createDataPartition(y=training$classe, p=0.75, list = FALSE)
+trainRF <- training[inTrain,]
+testRF <- training[-inTrain,]
+```
+
+## Training use random forest
+```{r, cache = TRUE}
+##Second model using random forest
+modelFit2 <- train(classe ~., data = trainRF, method = "rf")
+```
+
+## Cross validation result on testing (out of sample) set
+```{r, cache=TRUE}
+confusionMatrix(testRF$classe,predict(modelFit2,testRF))
+```
+
+In conclussion, random forest is applied to predict the manner in which they did the exercise. The data are split as 75% for data set, and 25% for training set. The model has **98.78%** accuracy on testing set. In addtion, the model has **100%** accuracy on the submission testing set of the project.
+
